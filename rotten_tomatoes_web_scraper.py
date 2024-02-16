@@ -1,0 +1,170 @@
+from datetime import datetime
+import logging
+import re
+import bs4
+from bs4 import BeautifulSoup
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import requests
+
+# Configure logging
+logging.basicConfig(
+    filename='RT_web_scraper.log',
+    level=logging.ERROR,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+
+def check_date_format(value):
+    try:
+        datetime.strptime(value, '%b %d, %Y')
+        return True
+    except ValueError:
+        return False
+
+
+def extract_movie_info(soup):
+    title_html = soup.find('h1', class_='title')
+    title = title_html.get_text(strip=True) if title_html else 'not found'
+
+    info_html = soup.find('p', class_='info')
+    info_text = info_html.get_text(strip=True)
+    info_text_parts = info_text.split(',')
+
+    year = info_text_parts[0].strip() if len(info_text_parts) > 0 else 'not found'
+    runtime = info_text_parts[2].strip() if len(info_text_parts) > 2 else 'not found'
+
+    genre_html = soup.find('span', class_='genre')
+    genre = ', '.join([genre.strip() for genre in genre_html.get_text(strip=True).split(',')]) if genre_html else 'not found'
+
+    score_board = soup.find('score-board-deprecated')
+    tomatometer = float(score_board.get('tomatometerscore', 'not found')) / 100 if score_board.get('tomatometerscore', 'not found') != 'not found' and score_board.get('tomatometerscore', 'not found') != '' else 'not found'
+    audience_score = float(score_board.get('audiencescore', 'not found')) / 100 if score_board.get('audiencescore', 'not found') != 'not found' and score_board.get('audiencescore', 'not found') != '' else 'not found'
+
+    release_date_html = soup.find('time')
+    release_date = release_date_html.get_text(strip=True) if release_date_html else 'not found'
+    release_date = datetime.strptime(release_date, '%b %d, %Y').strftime('%m/%d/%y') if check_date_format(release_date) else 'not found'
+
+    return title, 'Movie', year, genre, runtime, tomatometer, audience_score, release_date
+
+
+def extract_tv_show_info(soup, url):
+    series_url = re.search(r'(https://www\.rottentomatoes\.com/tv/[^/]+)/?', url).group(1)
+    series_response = requests.get(series_url, timeout=30)
+    series_soup = BeautifulSoup(series_response.text, 'lxml')
+    series_year_html = series_soup.find('rt-text', attrs={"slot": "releaseDate"})
+    series_year = series_year_html.get_text() if series_year_html else 'not found'
+
+    title_season_html = soup.find('h1')
+    title_season_text = title_season_html.get_text()
+    title_season_match = re.search(r'Season (\d+) – (.+)', title_season_text)
+    season = f'Season {title_season_match.group(1)}' if title_season_match else 'not found'
+    title = title_season_match.group(2) if title_season_match else 'not found'
+    title = title.strip() + ' (' + season + ')' if title and season else 'not found'
+
+    genre_html = soup.find_all('rt-link')
+    genre_links = [link for link in genre_html if link and 'genres:' in link.get('href', '')]
+    genres = [link.get_text() for link in genre_links]
+    genre = ', '.join(genres)
+
+    tomatometer_html = soup.find('rt-text', attrs={"slot": "criticsScore"})
+    tomatometer_text = tomatometer_html.get_text(strip=True)
+    tomatometer = float(tomatometer_text.strip('%')) / 100
+    audience_score_html = soup.find('rt-text', attrs={"slot": "audienceScore"})
+    audience_score_text = audience_score_html.get_text(strip=True)
+    audience_score = float(audience_score_text.strip('%')) / 100
+
+    release_date_html = soup.find('rt-text', attrs={"slot": "airDate"})
+    release_date_text = release_date_html.get_text(strip=True) if release_date_html else 'not found'
+    release_date_unformatted = release_date_text.replace('Aired', '').strip() if release_date_text else 'not found'
+    release_date = datetime.strptime(release_date_unformatted, '%b %d, %Y').strftime('%m/%d/%y') if release_date_unformatted != 'not found' and check_date_format(release_date_unformatted) else 'not found'
+    year = datetime.strptime(release_date_unformatted, '%b %d, %Y').year if release_date_unformatted != 'not found' else 'not found'
+    year = str(year) + ' (' + series_year + ')' if year and series_year else 'not found'
+
+    return title, 'TV', year, genre, 'N/A', tomatometer, audience_score, release_date
+
+
+def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
+    credentials_file = 'Rotten Tomatoes Web Scraper/gas-ias-sync-81a804e8a23a.json'
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
+    client = gspread.authorize(credentials)
+    sheet = client.open(sheet_name).worksheet('Show List')
+
+    if end_row:
+        rows = sheet.col_values(column_number)[start_row - 1:end_row]
+    else:
+        rows = sheet.col_values(column_number)[start_row - 1:]
+
+    urls = [url for url in rows if url]
+
+    return urls
+
+
+def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index):
+    try:
+        response = requests.get(url, timeout=30)
+        soup = BeautifulSoup(response.text, 'lxml')
+
+        show_type = soup.find('meta', {'property': 'og:type'}).prettify()
+        if 'movie' in show_type:
+            title, show_type, year, genre, runtime, tomatometer, audience_score, release_date = extract_movie_info(soup)
+        elif 'tv_show' in show_type:
+            title, show_type, year, genre, runtime, tomatometer, audience_score, release_date = extract_tv_show_info(soup, url)
+        else:
+            return
+
+        data = [None] * len(header_row)
+        data[title_index - 1] = title
+        data[type_index - 1] = show_type
+        data[year_index - 1] = year
+        data[genre_index - 1] = genre
+        data[runtime_index - 1] = runtime
+        data[tomatometer_index - 1] = tomatometer
+        data[audience_score_index - 1] = audience_score
+        data[release_date_index - 1] = release_date
+
+        update_range = f"A{row_number}:{chr(64 + len(header_row))}{row_number}"
+
+        sheet.update(range_name=update_range, values=[data])
+
+    except requests.exceptions.RequestException as e:
+        logging.error("Error making request for %s: %s", url, e, exc_info=True)
+    except bs4.FeatureNotFound as e:
+        logging.error("Error parsing HTML for %s: %s", url, e, exc_info=True)
+    except Exception as e:
+        logging.error("Unexpected error scraping %s: %s", url, e, exc_info=True)
+
+
+def main():
+    sheet_name = 'Movies & TV'
+    column_number = 17
+    start_row = 448
+    end_row = 452
+
+    credentials_file = 'Rotten Tomatoes Web Scraper/gas-ias-sync-81a804e8a23a.json'
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
+    client = gspread.authorize(credentials)
+    sheet = client.open(sheet_name).worksheet('Show List')
+
+    urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
+
+    header_row = sheet.row_values(1)
+
+    title_index = header_row.index('Title') + 1
+    type_index = header_row.index('Movie or TV') + 1
+    year_index = header_row.index('Year') + 1
+    genre_index = header_row.index('Genre') + 1
+    runtime_index = header_row.index('Runtime') + 1
+    tomatometer_index = header_row.index('Tomatometer') + 1
+    audience_score_index = header_row.index('Audience Score') + 1
+    release_date_index = header_row.index('Release Date') + 1
+
+    for row_number, url in enumerate(urls, start=start_row):
+        print(url)
+        scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
+
+
+if __name__ == "__main__":
+    main()
