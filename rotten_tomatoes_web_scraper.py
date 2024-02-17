@@ -1,3 +1,18 @@
+"""
+Module for scraping Rotten Tomatoes website for movie and TV show data and updating
+a Google Sheet with the scraped information.
+
+Dependencies:
+    - bs4 (BeautifulSoup): Library for web scraping.
+    - gspread: Python API for Google Sheets.
+    - logging: Standard library for logging in Python.
+    - oauth2client: Library for OAuth 2.0 authentication.
+    - requests: Library for making HTTP requests.
+
+Author: Andrew Wang
+Date:   February 16, 2024
+"""
+
 from datetime import datetime
 import logging
 import re
@@ -16,6 +31,16 @@ logging.basicConfig(
 
 
 def check_date_format(value):
+    """
+    Check if the input value has the format '%b %d, %Y' and return True if it does,
+    otherwise return False.
+    
+    Parameters:
+    value (str): The input value to be checked for date format.
+    
+    Returns:
+    bool: True if the input value has the correct date format, False otherwise.
+    """
     try:
         datetime.strptime(value, '%b %d, %Y')
         return True
@@ -24,6 +49,22 @@ def check_date_format(value):
 
 
 def extract_movie_info(soup):
+    """
+    Extracts movie information from the provided BeautifulSoup object.
+
+    Parameters:
+    - soup: BeautifulSoup object containing the movie information HTML.
+
+    Returns:
+    - title:          str, the title of the movie.
+    - 'Movie':        str, a string indicating that the result is a movie.
+    - year:           str, the release year of the movie.
+    - genre:          str, the genre(s) of the movie.
+    - runtime:        str, the duration of the movie.
+    - tomatometer:    float, the tomatometer score of the movie as a percentage.
+    - audience_score: float, the audience score of the movie as a percentage.
+    - release_date:   str, the release date of the movie in the format mm/dd/yy.
+    """
     title_html = soup.find('h1', class_='title')
     title = title_html.get_text(strip=True) if title_html else 'not found'
 
@@ -49,6 +90,23 @@ def extract_movie_info(soup):
 
 
 def extract_tv_show_info(soup, url):
+    """
+    Extracts TV show information from the provided BeautifulSoup object and URL.
+
+    Parameters:
+    - soup: BeautifulSoup object containing the TV show information HTML.
+    - url: str, the URL of the TV show.
+
+    Returns:
+    - title:          str, the title of the TV show.
+    - 'TV':           str, a string indicating that the result is a TV show.
+    - year:           str, the release year of the TV show.
+    - genre:          str, the genre(s) of the TV show.
+    - 'N/A':          str, a placeholder for the runtime as Rotten Tomatoes does not provide runtime data for TV shows.
+    - tomatometer:    float, the tomatometer score of the TV show as a percentage.
+    - audience_score: float, the audience score of the TV show as a percentage.
+    - release_date:   str, the release date of the TV show in the format mm/dd/yy.
+    """
     series_url = re.search(r'(https://www\.rottentomatoes\.com/tv/[^/]+)/?', url).group(1)
     series_response = requests.get(series_url, timeout=30)
     series_soup = BeautifulSoup(series_response.text, 'lxml')
@@ -85,6 +143,18 @@ def extract_tv_show_info(soup, url):
 
 
 def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
+    """
+    Fetches URLs from a Google Sheets document.
+
+    Args:
+        sheet_name (str):        The name of the Google Sheets document.
+        column_number (int):     The column number from which to fetch the URLs.
+        start_row (int):         The starting row index from which to fetch the URLs.
+        end_row (int, optional): The ending row index from which to fetch the URLs. If not provided, all rows from the start_row are fetched.
+
+    Returns:
+        list: A list of URLs fetched from the specified Google Sheets document.
+    """
     credentials_file = 'Rotten Tomatoes Web Scraper/gas-ias-sync-81a804e8a23a.json'
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
@@ -102,6 +172,24 @@ def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
 
 
 def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index):
+    """
+    A function to scrape data from Rotten Tomatoes and update a Google Sheet with the
+    extracted information.
+    
+    Args:
+        url (str):                  The URL of the Rotten Tomatoes page to scrape.
+        sheet (GoogleSheet):        The Google Sheet to update with the extracted information.
+        row_number (int):           The row number in the Google Sheet to update.
+        header_row (list):          The header row of the Google Sheet.
+        title_index (int):          The index of the title column in the Google Sheet.
+        type_index (int):           The index of the type column in the Google Sheet.
+        year_index (int):           The index of the year column in the Google Sheet.
+        genre_index (int):          The index of the genre column in the Google Sheet.
+        runtime_index (int):        The index of the runtime column in the Google Sheet.
+        tomatometer_index (int):    The index of the tomatometer column in the Google Sheet.
+        audience_score_index (int): The index of the audience score column in the Google Sheet.
+        release_date_index (int):   The index of the release date column in the Google Sheet.
+    """
     try:
         response = requests.get(url, timeout=30)
         soup = BeautifulSoup(response.text, 'lxml')
@@ -137,6 +225,12 @@ def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, 
 
 
 def main():
+    """
+    This function is the main entry point. It sets up the necessary credentials,
+    fetches the sheet, fetches URLs from the specified sheet, and then iterates
+    through the URLs to scrape Rotten Tomatoes data and update the provided Google
+    Sheet with the results.
+    """
     sheet_name = 'Movies & TV'
     column_number = 17
     start_row = 448
