@@ -76,11 +76,11 @@ def extract_movie_info(soup):
     runtime = info_text_parts[2].strip() if len(info_text_parts) > 2 else 'not found'
 
     genre_html = soup.find('span', class_='genre')
-    genre = ', '.join(genre.strip() for genre in genre_html.get_text(strip=True).split(',')) if genre_html else 'not found'
+    genre = ', '.join([genre.strip() for genre in genre_html.get_text(strip=True).split(',')]) if genre_html else 'not found'
 
     score_board = soup.find('score-board-deprecated')
-    tomatometer = float(score_board.get('tomatometerscore', 'not found')) / 100 if score_board.get('tomatometerscore', 'not found') not in ('not found', '') else 'not found'
-    audience_score = float(score_board.get('audiencescore', 'not found')) / 100 if score_board.get('audiencescore', 'not found') not in ('not found', '') else 'not found'
+    tomatometer = float(score_board.get('tomatometerscore', 'not found')) / 100 if score_board and score_board.get('tomatometerscore') not in ('not found', '') else 'not found'
+    audience_score = float(score_board.get('audiencescore', 'not found')) / 100 if score_board and score_board.get('audiencescore') not in ('not found', '') else 'not found'
 
     release_date_html = soup.find('time')
     release_date = release_date_html.get_text(strip=True) if release_date_html else 'not found'
@@ -89,7 +89,7 @@ def extract_movie_info(soup):
     return title, 'Movie', year, genre, runtime, tomatometer, audience_score, release_date
 
 
-def extract_tv_show_info(soup, url):
+def extract_tv_info(soup, url):
     """
     Extracts TV show information from the provided BeautifulSoup object and URL.
 
@@ -114,33 +114,53 @@ def extract_tv_show_info(soup, url):
     series_year = series_year_html.get_text() if series_year_html else 'not found'
 
     title_season_html = soup.find('h1')
-    title_season_text = title_season_html.get_text()
+    title_season_text = title_season_html.get_text() if title_season_html else ''
     title_season_match = re.search(r'Season (\d+) – (.+)', title_season_text)
     season = f'Season {title_season_match.group(1)}' if title_season_match else 'not found'
     title = title_season_match.group(2) if title_season_match else 'not found'
-    title = title.strip() + ' (' + season + ')' if title and season else 'not found'
+    title = f'{title.strip()} ({season})' if title and season else 'not found'
 
     genre_html = soup.find_all('rt-link')
-    genre_links = [link for link in genre_html if link and 'genres:' in link.get('href', '')]
-    genres = [link.get_text() for link in genre_links]
+    genres = [link.get_text() for link in genre_html if link and 'genres:' in link.get('href', '')]
     genre = ', '.join(genres)
 
     tomatometer_html = soup.find('rt-text', attrs={"slot": "criticsScore"})
-    tomatometer_text = tomatometer_html.get_text(strip=True)
-    tomatometer = float(tomatometer_text.strip('%')) / 100
+    tomatometer_text = tomatometer_html.get_text(strip=True) if tomatometer_html else ''
+    tomatometer = float(tomatometer_text.strip('%')) / 100 if tomatometer_text else 'not found'
+
     audience_score_html = soup.find('rt-text', attrs={"slot": "audienceScore"})
-    audience_score_text = audience_score_html.get_text(strip=True)
-    audience_score = float(audience_score_text.strip('%')) / 100
+    audience_score_text = audience_score_html.get_text(strip=True) if audience_score_html else ''
+    audience_score = float(audience_score_text.strip('%')) / 100 if audience_score_text else 'not found'
 
     release_date_html = soup.find('rt-text', attrs={"slot": "airDate"})
-    release_date_text = release_date_html.get_text(strip=True) if release_date_html else 'not found'
+    release_date_text = release_date_html.get_text(strip=True) if release_date_html else ''
     release_date_unformatted = release_date_text.replace('Aired', '').strip() if release_date_text else 'not found'
-    release_date_datetime = datetime.strptime(release_date_unformatted, '%b %d, %Y')
-    release_date = release_date_datetime.strftime('%m/%d/%y') if release_date_unformatted != 'not found' and check_date_format(release_date_unformatted) else 'not found'
-    year = release_date_datetime.year if release_date_unformatted != 'not found' else 'not found'
-    year = str(year) + ' (' + series_year + ')' if year and series_year else 'not found'
+    if release_date_unformatted != 'not found':
+        release_date_datetime = datetime.strptime(release_date_unformatted, '%b %d, %Y')
+        release_date = release_date_datetime.strftime('%m/%d/%y') if check_date_format(release_date_unformatted) else 'not found'
+        year = f'{release_date_datetime.year} ({series_year})' if series_year else 'not found'
 
     return title, 'TV', year, genre, 'N/A', tomatometer, audience_score, release_date
+
+
+def load_credentials():
+    """
+    Loads and returns the Google Sheets API credentials.
+
+    Returns:
+        oauth2client.service_account.ServiceAccountCredentials: The loaded credentials.
+    """
+    credentials_file = 'Rotten-Tomatoes-Web-Scraper/gas-ias-sync-81a804e8a23a.json'
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+
+    try:
+        return ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
+    except FileNotFoundError as e:
+        logging.error("Credentials file not found: %s", e, exc_info=True)
+        raise
+    except Exception as e:
+        logging.error("Unexpected error loading credentials: %s", e, exc_info=True)
+        raise
 
 
 def get_google_sheet(sheet_name):
@@ -153,12 +173,17 @@ def get_google_sheet(sheet_name):
     Returns:
         gspread.models.Worksheet: The Google Sheet object.
     """
-    credentials_file = 'Rotten-Tomatoes-Web-Scraper/gas-ias-sync-81a804e8a23a.json'
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
-    client = gspread.authorize(credentials)
+    credentials = load_credentials()
 
-    return client.open(sheet_name).worksheet('Show List')
+    try:
+        client = gspread.authorize(credentials)
+        return client.open(sheet_name).worksheet('Show List')
+    except gspread.exceptions.APIError as e:
+        logging.error("Error accessing Google Sheets API: %s", e, exc_info=True)
+        raise
+    except Exception as e:
+        logging.error("Unexpected error: %s", e, exc_info=True)
+        raise
 
 
 def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
@@ -174,19 +199,19 @@ def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
     Returns:
         list: A list of URLs fetched from the specified Google Sheets document.
     """
-    sheet = get_google_sheet(sheet_name)
-
-    if end_row:
+    try:
+        sheet = get_google_sheet(sheet_name)
         rows = sheet.col_values(column_number)[start_row - 1:end_row]
-    else:
-        rows = sheet.col_values(column_number)[start_row - 1:]
+        urls = [url for url in rows if url]
+        return urls
+    except gspread.exceptions.APIError as e:
+        logging.error("Error accessing Google Sheets API: %s", e, exc_info=True)
+        raise
+    except Exception as e:
+        logging.error("Unexpected error: %s", e, exc_info=True)
+        raise
 
-    urls = [url for url in rows if url]
-
-    return urls
-
-
-def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index):
+def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, *column_indices):
     """
     A function to scrape data from Rotten Tomatoes and update a Google Sheet with the
     extracted information.
@@ -209,27 +234,28 @@ def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, 
         response = requests.get(url, timeout=30)
         soup = BeautifulSoup(response.text, 'lxml')
 
-        show_type = soup.find('meta', {'property': 'og:type'}).prettify()
+        show_type = soup.find('meta', {'property': 'og:type'})['content']
         if 'movie' in show_type:
             title, show_type, year, genre, runtime, tomatometer, audience_score, release_date = extract_movie_info(soup)
         elif 'tv_show' in show_type:
-            title, show_type, year, genre, runtime, tomatometer, audience_score, release_date = extract_tv_show_info(soup, url)
+            title, show_type, year, genre, runtime, tomatometer, audience_score, release_date = extract_tv_info(soup, url)
         else:
+            logging.warning("Show type not recognized for URL: %s", url)
             return
 
-        data = [None] * len(header_row)
-        data[title_index - 1] = title
-        data[type_index - 1] = show_type
-        data[year_index - 1] = year
-        data[genre_index - 1] = genre
-        data[runtime_index - 1] = runtime
-        data[tomatometer_index - 1] = tomatometer
-        data[audience_score_index - 1] = audience_score
-        data[release_date_index - 1] = release_date
+        data = {header_row[i - 1]: None for i in column_indices}
+        data['Title'] = title
+        data['Movie or TV'] = show_type
+        data['Year'] = year
+        data['Genre'] = genre
+        data['Runtime'] = runtime
+        data['Tomatometer'] = tomatometer
+        data['Audience Score'] = audience_score
+        data['Release Date'] = release_date
 
-        update_range = f"A{row_number}:{chr(64 + len(header_row))}{row_number}"
+        update_range = f"B{row_number}:{chr(65 + len(header_row))}{row_number}"
 
-        sheet.update(range_name=update_range, values=[data])
+        sheet.update(range_name=update_range, values=[list(data.values())])
 
     except requests.exceptions.RequestException as e:
         logging.error("Error making request for %s: %s", url, e, exc_info=True)
@@ -249,7 +275,7 @@ def main():
     sheet_name = 'Movies & TV'
     column_number = 17
     start_row = 448
-    end_row = 452
+    end_row = None
     sheet = get_google_sheet(sheet_name)
 
     urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
