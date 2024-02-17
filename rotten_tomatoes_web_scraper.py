@@ -34,10 +34,10 @@ def check_date_format(value):
     """
     Check if the input value has the format '%b %d, %Y' and return True if it does,
     otherwise return False.
-    
+
     Parameters:
     value (str): The input value to be checked for date format.
-    
+
     Returns:
     bool: True if the input value has the correct date format, False otherwise.
     """
@@ -76,11 +76,11 @@ def extract_movie_info(soup):
     runtime = info_text_parts[2].strip() if len(info_text_parts) > 2 else 'not found'
 
     genre_html = soup.find('span', class_='genre')
-    genre = ', '.join([genre.strip() for genre in genre_html.get_text(strip=True).split(',')]) if genre_html else 'not found'
+    genre = ', '.join(genre.strip() for genre in genre_html.get_text(strip=True).split(',')) if genre_html else 'not found'
 
     score_board = soup.find('score-board-deprecated')
-    tomatometer = float(score_board.get('tomatometerscore', 'not found')) / 100 if score_board.get('tomatometerscore', 'not found') != 'not found' and score_board.get('tomatometerscore', 'not found') != '' else 'not found'
-    audience_score = float(score_board.get('audiencescore', 'not found')) / 100 if score_board.get('audiencescore', 'not found') != 'not found' and score_board.get('audiencescore', 'not found') != '' else 'not found'
+    tomatometer = float(score_board.get('tomatometerscore', 'not found')) / 100 if score_board.get('tomatometerscore', 'not found') not in ('not found', '') else 'not found'
+    audience_score = float(score_board.get('audiencescore', 'not found')) / 100 if score_board.get('audiencescore', 'not found') not in ('not found', '') else 'not found'
 
     release_date_html = soup.find('time')
     release_date = release_date_html.get_text(strip=True) if release_date_html else 'not found'
@@ -135,8 +135,9 @@ def extract_tv_show_info(soup, url):
     release_date_html = soup.find('rt-text', attrs={"slot": "airDate"})
     release_date_text = release_date_html.get_text(strip=True) if release_date_html else 'not found'
     release_date_unformatted = release_date_text.replace('Aired', '').strip() if release_date_text else 'not found'
-    release_date = datetime.strptime(release_date_unformatted, '%b %d, %Y').strftime('%m/%d/%y') if release_date_unformatted != 'not found' and check_date_format(release_date_unformatted) else 'not found'
-    year = datetime.strptime(release_date_unformatted, '%b %d, %Y').year if release_date_unformatted != 'not found' else 'not found'
+    release_date_datetime = datetime.strptime(release_date_unformatted, '%b %d, %Y')
+    release_date = release_date_datetime.strftime('%m/%d/%y') if release_date_unformatted != 'not found' and check_date_format(release_date_unformatted) else 'not found'
+    year = release_date_datetime.year if release_date_unformatted != 'not found' else 'not found'
     year = str(year) + ' (' + series_year + ')' if year and series_year else 'not found'
 
     return title, 'TV', year, genre, 'N/A', tomatometer, audience_score, release_date
@@ -152,7 +153,7 @@ def get_google_sheet(sheet_name):
     Returns:
         gspread.models.Worksheet: The Google Sheet object.
     """
-    credentials_file = 'gas-ias-sync-81a804e8a23a.json'
+    credentials_file = 'Rotten-Tomatoes-Web-Scraper/gas-ias-sync-81a804e8a23a.json'
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
     client = gspread.authorize(credentials)
@@ -189,7 +190,7 @@ def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, 
     """
     A function to scrape data from Rotten Tomatoes and update a Google Sheet with the
     extracted information.
-    
+
     Args:
         url (str):                  The URL of the Rotten Tomatoes page to scrape.
         sheet (GoogleSheet):        The Google Sheet to update with the extracted information.
