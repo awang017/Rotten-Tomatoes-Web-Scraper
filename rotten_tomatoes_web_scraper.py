@@ -142,6 +142,24 @@ def extract_tv_show_info(soup, url):
     return title, 'TV', year, genre, 'N/A', tomatometer, audience_score, release_date
 
 
+def get_google_sheet(sheet_name):
+    """
+    Fetches and returns the Google Sheet object.
+
+    Args:
+        sheet_name (str): The name of the Google Sheets document.
+
+    Returns:
+        gspread.models.Worksheet: The Google Sheet object.
+    """
+    credentials_file = 'gas-ias-sync-81a804e8a23a.json'
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
+    client = gspread.authorize(credentials)
+
+    return client.open(sheet_name).worksheet('Show List')
+
+
 def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
     """
     Fetches URLs from a Google Sheets document.
@@ -155,11 +173,7 @@ def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
     Returns:
         list: A list of URLs fetched from the specified Google Sheets document.
     """
-    credentials_file = 'Rotten Tomatoes Web Scraper/gas-ias-sync-81a804e8a23a.json'
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
-    client = gspread.authorize(credentials)
-    sheet = client.open(sheet_name).worksheet('Show List')
+    sheet = get_google_sheet(sheet_name)
 
     if end_row:
         rows = sheet.col_values(column_number)[start_row - 1:end_row]
@@ -235,17 +249,11 @@ def main():
     column_number = 17
     start_row = 448
     end_row = 452
-
-    credentials_file = 'Rotten Tomatoes Web Scraper/gas-ias-sync-81a804e8a23a.json'
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
-    client = gspread.authorize(credentials)
-    sheet = client.open(sheet_name).worksheet('Show List')
+    sheet = get_google_sheet(sheet_name)
 
     urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
 
     header_row = sheet.row_values(1)
-
     title_index = header_row.index('Title') + 1
     type_index = header_row.index('Movie or TV') + 1
     year_index = header_row.index('Year') + 1
