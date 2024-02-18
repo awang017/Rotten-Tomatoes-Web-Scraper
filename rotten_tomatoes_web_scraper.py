@@ -272,27 +272,30 @@ def main():
     through the URLs to scrape Rotten Tomatoes data and update the provided Google
     Sheet with the results.
     """
-    sheet_name = 'Movies & TV'
-    column_number = 17
-    start_row = 448
-    end_row = None
-    sheet = get_google_sheet(sheet_name)
+    try:
+        sheet_name = 'Movies & TV'
+        column_number = 17
+        start_row = 448
+        end_row = None
+        sheet = get_google_sheet(sheet_name)
 
-    urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
+        urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
 
-    header_row = sheet.row_values(1)
-    title_index = header_row.index('Title') + 1
-    type_index = header_row.index('Movie or TV') + 1
-    year_index = header_row.index('Year') + 1
-    genre_index = header_row.index('Genre') + 1
-    runtime_index = header_row.index('Runtime') + 1
-    tomatometer_index = header_row.index('Tomatometer') + 1
-    audience_score_index = header_row.index('Audience Score') + 1
-    release_date_index = header_row.index('Release Date') + 1
+        header_row = sheet.row_values(1)
+        title_index = header_row.index('Title') + 1
+        type_index = header_row.index('Movie or TV') + 1
+        year_index = header_row.index('Year') + 1
+        genre_index = header_row.index('Genre') + 1
+        runtime_index = header_row.index('Runtime') + 1
+        tomatometer_index = header_row.index('Tomatometer') + 1
+        audience_score_index = header_row.index('Audience Score') + 1
+        release_date_index = header_row.index('Release Date') + 1
 
-    for row_number, url in enumerate(urls, start=start_row):
-        print(url)
-        scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
+        for row_number, url in enumerate(urls, start=start_row):
+            print(url)
+            scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
+    except Exception as e:
+        logging.error("An error occurred: %s", e, exc_info=True)
 
 
 if __name__ == "__main__":
