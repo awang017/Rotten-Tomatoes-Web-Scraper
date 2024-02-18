@@ -10,7 +10,7 @@ Dependencies:
     - requests: Library for making HTTP requests.
 
 Author: Andrew Wang
-Date:   February 16, 2024
+Date:   February 17, 2024
 """
 
 from datetime import datetime
@@ -150,6 +150,7 @@ def load_credentials():
     Returns:
         oauth2client.service_account.ServiceAccountCredentials: The loaded credentials.
     """
+    # Replace the path below with the path to your credentials file
     credentials_file = 'Rotten-Tomatoes-Web-Scraper/gas-ias-sync-81a804e8a23a.json'
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
@@ -174,10 +175,12 @@ def get_google_sheet(sheet_name):
         gspread.models.Worksheet: The Google Sheet object.
     """
     credentials = load_credentials()
+    # Replace the worksheet name below with the name of the worksheet you want to access
+    worksheet_name = 'Show List'
 
     try:
         client = gspread.authorize(credentials)
-        return client.open(sheet_name).worksheet('Show List')
+        return client.open(sheet_name).worksheet(worksheet_name)
     except gspread.exceptions.APIError as e:
         logging.error("Error accessing Google Sheets API: %s", e, exc_info=True)
         raise
@@ -240,6 +243,7 @@ def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, 
             return
 
         data = {header_row[i - 1]: None for i in column_indices}
+        # Replace the column indices below with the column indices you want to update
         data['Title'] = title
         data['Movie or TV'] = show_type
         data['Year'] = year
@@ -249,6 +253,7 @@ def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, 
         data['Audience Score'] = audience_score
         data['Release Date'] = release_date
 
+        # Replace the column letter ('B') below with the column letter you want to update
         update_range = f"B{row_number}:{chr(65 + len(header_row))}{row_number}"
 
         sheet.update(range_name=update_range, values=[list(data.values())])
@@ -289,10 +294,12 @@ def scrape_rotten_tomatoes_and_update_scores(url, sheet, row_number, header_row,
             logging.warning("Show type not recognized for URL: %s", url)
             return
 
+        # Replace the column indices below with the column indices you want to update
         data = {header_row[i - 1]: None for i in column_indices}
         data['Tomatometer'] = tomatometer
         data['Audience Score'] = audience_score
 
+        # Replace the column letter ('B') below with the column letter you want to update
         update_range = f"B{row_number}:{chr(65 + len(header_row))}{row_number}"
 
         sheet.update(range_name=update_range, values=[list(data.values())])
@@ -313,15 +320,17 @@ def main():
     Sheet with the results.
     """
     try:
+        # Replace sheet_name, column_number, start_row, and end_row with your desired values
         sheet_name = 'Movies & TV'
         column_number = 17
         start_row = 9
         end_row = 102
-        sheet = get_google_sheet(sheet_name)
 
+        sheet = get_google_sheet(sheet_name)
         urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
 
         header_row = sheet.row_values(1)
+        # Replace the column indices below with the column indices you want to update
         title_index = header_row.index('Title') + 1
         type_index = header_row.index('Movie or TV') + 1
         year_index = header_row.index('Year') + 1
