@@ -167,7 +167,7 @@ def get_google_sheet(sheet_name):
     """
     Fetches and returns the Google Sheet object.
 
-    Args:
+    Parameters:
         sheet_name (str): The name of the Google Sheets document.
 
     Returns:
@@ -190,7 +190,7 @@ def fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row=None):
     """
     Fetches URLs from a Google Sheets document.
 
-    Args:
+    Parameters:
         sheet_name (str):        The name of the Google Sheets document.
         column_number (int):     The column number from which to fetch the URLs.
         start_row (int):         The starting row index from which to fetch the URLs.
@@ -216,19 +216,15 @@ def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, 
     A function to scrape data from Rotten Tomatoes and update a Google Sheet with the
     extracted information.
 
-    Args:
-        url (str):                  The URL of the Rotten Tomatoes page to scrape.
-        sheet (GoogleSheet):        The Google Sheet to update with the extracted information.
-        row_number (int):           The row number in the Google Sheet to update.
-        header_row (list):          The header row of the Google Sheet.
-        title_index (int):          The index of the title column in the Google Sheet.
-        type_index (int):           The index of the type column in the Google Sheet.
-        year_index (int):           The index of the year column in the Google Sheet.
-        genre_index (int):          The index of the genre column in the Google Sheet.
-        runtime_index (int):        The index of the runtime column in the Google Sheet.
-        tomatometer_index (int):    The index of the tomatometer column in the Google Sheet.
-        audience_score_index (int): The index of the audience score column in the Google Sheet.
-        release_date_index (int):   The index of the release date column in the Google Sheet.
+    ***Update main to only use one of scrape_rotten_tomatoes_and_update_sheet or
+    scrape_rotten_tomatoes_and_update_scores.***
+
+    Parameters:
+        url (str):           The URL of the Rotten Tomatoes page to scrape.
+        sheet (GoogleSheet): The Google Sheet to update with the extracted information.
+        row_number (int):    The row number in the Google Sheet to update.
+        header_row (list):   The header row of the Google Sheet.
+	    *column_indices:     Variable number of column indices to update in the Google Sheets
     """
     try:
         response = requests.get(url, timeout=30)
@@ -265,6 +261,50 @@ def scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, 
         logging.error("Unexpected error scraping %s: %s", url, e, exc_info=True)
 
 
+def scrape_rotten_tomatoes_and_update_scores(url, sheet, row_number, header_row, *column_indices):
+    """
+    A function to scrape data from Rotten Tomatoes and update a Google Sheet with
+    only the extracted Tomatometer and audience score.
+
+    ***Update main to only use one of scrape_rotten_tomatoes_and_update_sheet or
+    scrape_rotten_tomatoes_and_update_scores.***
+
+    Parameters:
+        url (str):           The URL of the Rotten Tomatoes page to scrape.
+        sheet (GoogleSheet): The Google Sheet to update with the extracted information.
+        row_number (int):    The row number in the Google Sheet to update.
+        header_row (list):   The header row of the Google Sheet.
+	    *column_indices:     Variable number of column indices to update in the Google Sheets
+    """
+    try:
+        response = requests.get(url, timeout=30)
+        soup = BeautifulSoup(response.text, 'lxml')
+
+        show_type = soup.find('meta', {'property': 'og:type'})['content']
+        if 'movie' in show_type:
+            _, _, _, _, _, tomatometer, audience_score, _ = extract_movie_info(soup)
+        elif 'tv_show' in show_type:
+            _, _, _, _, _, tomatometer, audience_score, _ = extract_tv_info(soup, url)
+        else:
+            logging.warning("Show type not recognized for URL: %s", url)
+            return
+
+        data = {header_row[i - 1]: None for i in column_indices}
+        data['Tomatometer'] = tomatometer
+        data['Audience Score'] = audience_score
+
+        update_range = f"B{row_number}:{chr(65 + len(header_row))}{row_number}"
+
+        sheet.update(range_name=update_range, values=[list(data.values())])
+
+    except requests.exceptions.RequestException as e:
+        logging.error("Error making request for %s: %s", url, e, exc_info=True)
+    except bs4.FeatureNotFound as e:
+        logging.error("Error parsing HTML for %s: %s", url, e, exc_info=True)
+    except Exception as e:
+        logging.error("Unexpected error scraping %s: %s", url, e, exc_info=True)
+
+
 def main():
     """
     This function is the main entry point. It sets up the necessary credentials,
@@ -275,8 +315,8 @@ def main():
     try:
         sheet_name = 'Movies & TV'
         column_number = 17
-        start_row = 448
-        end_row = None
+        start_row = 9
+        end_row = 102
         sheet = get_google_sheet(sheet_name)
 
         urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
@@ -293,7 +333,9 @@ def main():
 
         for row_number, url in enumerate(urls, start=start_row):
             print(url)
-            scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
+            # Only use one of scrape_rotten_tomatoes_and_update_sheet or scrape_rotten_tomatoes_and_update_scores
+            # scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
+            scrape_rotten_tomatoes_and_update_scores(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
     except Exception as e:
         logging.error("An error occurred: %s", e, exc_info=True)
 
