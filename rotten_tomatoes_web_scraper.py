@@ -10,7 +10,7 @@ Dependencies:
     - requests: Library for making HTTP requests.
 
 Author: Andrew Wang
-Date:   February 17, 2024
+Date:   February 20, 2024
 """
 
 from datetime import datetime
@@ -323,8 +323,8 @@ def main():
         # Replace sheet_name, column_number, start_row, and end_row with your desired values
         sheet_name = 'Movies & TV'
         column_number = 17
-        start_row = 9
-        end_row = 102
+        start_row = 468
+        end_row = None
 
         sheet = get_google_sheet(sheet_name)
         urls = fetch_urls_from_sheet(sheet_name, column_number, start_row, end_row)
@@ -343,8 +343,8 @@ def main():
         for row_number, url in enumerate(urls, start=start_row):
             print(url)
             # Only use one of scrape_rotten_tomatoes_and_update_sheet or scrape_rotten_tomatoes_and_update_scores
-            # scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
-            scrape_rotten_tomatoes_and_update_scores(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
+            scrape_rotten_tomatoes_and_update_sheet(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
+            # scrape_rotten_tomatoes_and_update_scores(url, sheet, row_number, header_row, title_index, type_index, year_index, genre_index, runtime_index, tomatometer_index, audience_score_index, release_date_index)
     except Exception as e:
         logging.error("An error occurred: %s", e, exc_info=True)
 
