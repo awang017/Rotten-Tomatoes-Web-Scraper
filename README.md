@@ -6,7 +6,7 @@ This Python module scrapes movie and TV show data from the Rotten Tomatoes websi
 
 This module requires the following dependencies:
 
-- **bs4 (BeautifulSoup):** A library for web scraping.
+- **bs4 (BeautifulSoup):** Library for web scraping.
 - **gspread:** Python API for Google Sheets.
 - **logging:** Standard library for logging in Python.
 - **oauth2client:** Library for OAuth 2.0 authentication.
